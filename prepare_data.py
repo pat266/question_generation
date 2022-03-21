@@ -250,7 +250,10 @@ def main():
         data_files_train = {"train": data_args.dataset_path + data_args.train_file}      
         train_dataset = load_dataset('json', data_files=data_files_train, name=data_args.qg_format, field='data')
         train_dataset = train_dataset['train']
-        train_dataset = train_dataset.remove_columns("title")
+        try:
+            train_dataset = train_dataset.remove_columns("title")
+        except ValueError:
+            pass
         # convert it (flatten it) to fit what we want
         train_dataset = train_dataset.map(process_squad, batched=True, remove_columns="paragraphs")
         
@@ -258,7 +261,10 @@ def main():
         data_files_valid = {"valid": data_args.dataset_path + data_args.valid_file}
         valid_dataset = load_dataset('json', data_files=data_files_valid, name=data_args.qg_format, field='data')
         valid_dataset = valid_dataset['valid']
-        valid_dataset = valid_dataset.remove_columns("title")
+        try:
+            valid_dataset = valid_dataset.remove_columns("title")
+        except ValueError:
+            pass
         # convert it (flatten it) to fit what we want
         valid_dataset = valid_dataset.map(process_squad, batched=True, remove_columns="paragraphs")
 
