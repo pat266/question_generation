@@ -5,8 +5,7 @@ from typing import Dict, List, Optional
 
 import torch
 import nlp
-from datasets import load_dataset
-import datasets
+from datasets import load_dataset, concatenate_datasets
 from pathlib import Path
 from transformers import T5Tokenizer, BartTokenizer, HfArgumentParser
 
@@ -82,8 +81,8 @@ class DataProcessor:
             self.sep_token = "[SEP]"
   
     def process(self, dataset):
-        # if self.model_type == "t5":
-        #     dataset = dataset.map(self._add_eos_examples)
+        if self.model_type == "t5":
+            dataset = dataset.map(self._add_eos_examples)
         
         dataset = dataset.map(self._add_special_tokens)
         dataset = dataset.map(self._convert_to_features, batched=True)
@@ -141,11 +140,6 @@ def filter_ans_ext(example):
 def filter_multi(example):
     return example['task'] != 'e2e_qg'
 
-def _add_eos_examples(article):
-    article['source_text'] = article['source_text'] + " </s>"
-    article['target_text'] = article['target_text'] + " </s>"
-    return article
-
 TASK_TO_FILTER_FN = {
     'qa': filter_qa,
     'qg': filter_qg,
@@ -175,7 +169,7 @@ def process_squad(articles):
     return out
 
 """
-Both of the following function has the same semantic as the squad_multitask.py file
+All three of the following function has the same semantic as the squad_multitask.py file
 There will be no tags as we will always use multi - generate both questions and answers
 """
 hl_token = "<hl>"            
@@ -193,7 +187,10 @@ def _get_correct_alignement(context, answer):
         return start_idx-2, end_idx-2   # When the gold label is off by two character
     else:
         raise ValueError()
-
+"""
+All three of the following function has the same semantic as the squad_multitask.py file
+There will be no tags as we will always use multi - generate both questions and answers
+"""
 def process_qa_text(articles):
     out = {
         "source_text": [],
@@ -203,7 +200,10 @@ def process_qa_text(articles):
         out["source_text"].append(f"question: {question}  context: {context}")
         out["target_text"].append(f"{answer}")
     return out
-
+"""
+All three of the following function has the same semantic as the squad_multitask.py file
+There will be no tags as we will always use multi - generate both questions and answers
+"""
 def process_qg_text(articles):
     out = {
         "source_text": [],
@@ -269,6 +269,14 @@ def main():
         # QG
         train_dataset_qg = train_dataset.map(process_qg_text, batched=True, remove_columns=['contexts', 'questions', 'answers'])
         valid_dataset_qg = train_dataset.map(process_qg_text, batched=True, remove_columns=['contexts', 'questions', 'answers'])
+        
+        # clear the memory
+        del train_dataset
+        del valid_dataset
+        
+        # Assign it back to the correct values
+        train_dataset = concatenate_datasets([train_dataset_qa, train_dataset_qg]).shuffle()
+        valid_dataset = concatenate_datasets([valid_dataset_qa, valid_dataset_qg])
       
     processor = DataProcessor(
         tokenizer,
@@ -283,8 +291,6 @@ def main():
     columns = ["source_ids", "target_ids", "attention_mask"]
     train_dataset.set_format(type='torch', columns=columns)
     valid_dataset.set_format(type='torch', columns=columns)
-    # raise Exception(type(train_dataset))
-    # pprint(train_dataset.features)
 
     if data_args.train_file_name is None:
         train_file_name = f"train_data_{data_args.task}_{data_args.qg_format}_{data_args.model_type}.pt"
