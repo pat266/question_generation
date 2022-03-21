@@ -1,5 +1,43 @@
 # Forked from https://github.com/patil-suraj/question_generation
 Tailored toward my need
+
+## Script to run SQuAD like json file (from local)
+### Convert data
+Make sure to change dataset path
+```
+python prepare_data.py \
+    --task multi \
+    --valid_for_qg_only \
+    --model_type t5 \
+    --load_local \
+    --dataset_path ./data/change-here/ \
+    --train_file train-v2.0.json \
+    --valid_file dev-v2.0.json \
+    --qg_format highlight_qg_format \
+    --max_source_length 512 \
+    --max_target_length 32 \
+    --train_file_name train_data_qa_qg_hl_t5.pt \
+    --valid_file_name valid_data_qg_hl_t5.pt
+```
+### Finetune
+```
+python run_qg.py \
+    --model_name_or_path t5-base \
+    --model_type t5 \
+    --tokenizer_name_or_path t5_qg_tokenizer \
+    --output_dir t5-small-qg-hl \
+    --train_file_path data/train_data_qg_hl_t5.pt \
+    --valid_file_path data/valid_data_qg_hl_t5.pt \
+    --per_device_train_batch_size 32 \
+    --per_device_eval_batch_size 32 \
+    --gradient_accumulation_steps 8 \
+    --learning_rate 1e-4 \
+    --num_train_epochs 10 \
+    --seed 42 \
+    --do_train \
+    --do_eval \
+    --logging_steps 100
+```
 # Question Generation using 🤗transformers
 
 - [Question Generation using 🤗transformers](#question-generation-using-transformers)

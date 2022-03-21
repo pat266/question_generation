@@ -5,7 +5,19 @@ python run_qg.py --model_name_or_path t5-small --model_type t5 --tokenizer_name_
 
 
 # Testing script
-python prepare_data.py --task multi --valid_for_qg_only --model_type t5 --train_file train-v2.0.json --valid_file dev-v2.0.json --load_local --dataset_path ./data/squad2/ --qg_format highlight_qg_format --max_source_length 512 --max_target_length 32 --train_file_name train_data_qa_qg_hl_t5.pt --valid_file_name valid_data_qg_hl_t5.pt
+python prepare_data.py \
+    --task multi \
+    --valid_for_qg_only \
+    --model_type t5 \
+    --load_local \
+    --dataset_path ./data/squad2/ \
+    --train_file train-v2.0.json \
+    --valid_file dev-v2.0.json \
+    --qg_format highlight_qg_format \
+    --max_source_length 512 \
+    --max_target_length 32 \
+    --train_file_name train_data_qa_qg_hl_t5.pt \
+    --valid_file_name valid_data_qg_hl_t5.pt
 
 python run_qg.py \
     --model_name_or_path t5-base \
