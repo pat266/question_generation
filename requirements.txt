@@ -1,0 +1,6 @@
+# pip install -r requirements.txt
+transformers==3.0.0
+nltk
+datasets
+torch==1.9.0
+nlp==0.2.0

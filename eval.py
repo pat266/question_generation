@@ -82,7 +82,7 @@ def main():
         max_length=args.max_decoding_length
     )
 
-    with open(args.output_path, 'w') as f:
+    with open(args.output_path, 'w', encoding='UTF-8') as f:
         f.write("\n".join(predictions))
     
     logging.info(f"Output saved at {args.output_path}")

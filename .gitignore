@@ -1,2 +1,5 @@
 *.pt
 __pycache__
+t5_qg_tokenizer/*
+runs/*
+data/*.pt

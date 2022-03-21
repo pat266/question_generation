@@ -5,7 +5,12 @@ from typing import Dict, List, Optional
 
 import torch
 import nlp
+from datasets import load_dataset
+import datasets
+from pathlib import Path
 from transformers import T5Tokenizer, BartTokenizer, HfArgumentParser
+
+from pprint import pprint
 
 
 logger = logging.getLogger(__name__)
@@ -24,6 +29,14 @@ class DataTrainingArguments:
         default="data/squad_multitask",
         metadata={"help": "Path for dataset directory"}, 
     )
+    train_file: Optional[str] = field(
+        default=None,
+        metadata={"help": "name for the json train file"},
+    )
+    valid_file: Optional[str] = field(
+        default=None,
+        metadata={"help": "name for the json valid file"},
+    )
     train_file_name: Optional[str] = field(
         default=None,
         metadata={"help": "name for cached train dataset"},
@@ -31,6 +44,10 @@ class DataTrainingArguments:
     valid_file_name: Optional[str] = field(
         default=None,
         metadata={"help": "name for cached valid dataset"},
+    )
+    load_local: bool = field(
+        default=False,
+        metadata={"help": "For loading local json files."}
     )
     valid_for_qg_only: bool = field(
         default=False,
@@ -65,8 +82,8 @@ class DataProcessor:
             self.sep_token = "[SEP]"
   
     def process(self, dataset):
-        if self.model_type == "t5":
-            dataset = dataset.map(self._add_eos_examples)
+        # if self.model_type == "t5":
+        #     dataset = dataset.map(self._add_eos_examples)
         
         dataset = dataset.map(self._add_special_tokens)
         dataset = dataset.map(self._convert_to_features, batched=True)
@@ -124,6 +141,10 @@ def filter_ans_ext(example):
 def filter_multi(example):
     return example['task'] != 'e2e_qg'
 
+def _add_eos_examples(article):
+    article['source_text'] = article['source_text'] + " </s>"
+    article['target_text'] = article['target_text'] + " </s>"
+    return article
 
 TASK_TO_FILTER_FN = {
     'qa': filter_qa,
@@ -133,6 +154,68 @@ TASK_TO_FILTER_FN = {
     'multi': filter_multi
 }
 
+"""
+Convert the SQuAD json format to dataset format (not used but is useful)
+"""
+def process_squad(articles):
+    out = {
+        "contexts": [],
+        "questions": [],
+        "answers": [],
+    }
+    for paragraphs in articles["paragraphs"]:
+        for paragraph in paragraphs:
+            for qa in paragraph["qas"]:
+                for answer in qa["answers"]:
+                    # out["title"].append(title)
+                    out["contexts"].append(paragraph["context"])
+                    out["questions"].append(qa["question"])
+                    # out["id"].append(qa["id"])
+                    out["answers"].append(answer)
+    return out
+
+"""
+Both of the following function has the same semantic as the squad_multitask.py file
+There will be no tags as we will always use multi - generate both questions and answers
+"""
+hl_token = "<hl>"            
+sep_token = "<sep>"
+def _get_correct_alignement(context, answer):
+    """ Some original examples in SQuAD have indices wrong by 1 or 2 character. We test and fix this here. """
+    gold_text = answer['text']
+    start_idx = answer['answer_start']
+    end_idx = start_idx + len(gold_text)
+    if context[start_idx:end_idx] == gold_text:
+        return start_idx, end_idx       # When the gold label position is good
+    elif context[start_idx-1:end_idx-1] == gold_text:
+        return start_idx-1, end_idx-1   # When the gold label is off by one character
+    elif context[start_idx-2:end_idx-2] == gold_text:
+        return start_idx-2, end_idx-2   # When the gold label is off by two character
+    else:
+        raise ValueError()
+
+def process_qa_text(articles):
+    out = {
+        "source_text": [],
+        "target_text": [],
+    }
+    for context, question, answer in zip(articles['contexts'], articles['questions'], articles['answers']):
+        out["source_text"].append(f"question: {question}  context: {context}")
+        out["target_text"].append(f"{answer}")
+    return out
+
+def process_qg_text(articles):
+    out = {
+        "source_text": [],
+        "target_text": [],
+    }
+    for context, question, answer in zip(articles['contexts'], articles['questions'], articles['answers']):
+        # raise Exception((answer))
+        answer_text = str(answer['text']).strip()
+        start_pos, end_pos = _get_correct_alignement(context, answer)
+        out["source_text"].append(f"generate question: {context[:start_pos]} {{hl_token}} {answer_text} {{hl_token}} {context[end_pos:]}")
+        out["target_text"].append(f"{question}")
+    return out
 
 def main():
     parser = HfArgumentParser((DataTrainingArguments,))
@@ -151,10 +234,42 @@ def main():
         tokenizer = BartTokenizer.from_pretrained("facebook/bart-base")
     
     tokenizer.add_tokens(['<sep>', '<hl>'])
-    
-    train_dataset = nlp.load_dataset(data_args.dataset_path, name=data_args.qg_format, split=nlp.Split.TRAIN)
-    valid_dataset = nlp.load_dataset(data_args.dataset_path, name=data_args.qg_format, split=nlp.Split.VALIDATION)
 
+    # if load from custom script (in data/squad_multitask.py)
+    if not data_args.load_local:
+        train_dataset = load_dataset(data_args.dataset_path, name=data_args.qg_format, split=datasets.Split.TRAIN)
+        valid_dataset = load_dataset(data_args.dataset_path, name=data_args.qg_format, split=datasets.Split.VALIDATION)
+        train_dataset = train_dataset.filter(TASK_TO_FILTER_FN[data_args.task])
+        if data_args.task == 'multi' and data_args.valid_for_qg_only:
+            logger.info("processing valid data only for qg task")
+            valid_dataset = valid_dataset.filter(filter_qg)
+        else:
+            valid_dataset = valid_dataset.filter(TASK_TO_FILTER_FN[data_args.task])
+    else:
+        # Train
+        data_files_train = {"train": data_args.dataset_path + data_args.train_file}      
+        train_dataset = load_dataset('json', data_files=data_files_train, name=data_args.qg_format, field='data')
+        train_dataset = train_dataset['train']
+        train_dataset = train_dataset.remove_columns("title")
+        # convert it (flatten it) to fit what we want
+        train_dataset = train_dataset.map(process_squad, batched=True, remove_columns="paragraphs")
+        
+        # Validation
+        data_files_valid = {"valid": data_args.dataset_path + data_args.valid_file}
+        valid_dataset = load_dataset('json', data_files=data_files_valid, name=data_args.qg_format, field='data')
+        valid_dataset = valid_dataset['valid']
+        valid_dataset = valid_dataset.remove_columns("title")
+        # convert it (flatten it) to fit what we want
+        valid_dataset = valid_dataset.map(process_squad, batched=True, remove_columns="paragraphs")
+
+        # QA
+        train_dataset_qa = train_dataset.map(process_qa_text, batched=True, remove_columns=['contexts', 'questions', 'answers'])
+        valid_dataset_qa = train_dataset.map(process_qa_text, batched=True, remove_columns=['contexts', 'questions', 'answers'])
+
+        # QG
+        train_dataset_qg = train_dataset.map(process_qg_text, batched=True, remove_columns=['contexts', 'questions', 'answers'])
+        valid_dataset_qg = train_dataset.map(process_qg_text, batched=True, remove_columns=['contexts', 'questions', 'answers'])
+      
     processor = DataProcessor(
         tokenizer,
         model_type=data_args.model_type,
@@ -162,20 +277,14 @@ def main():
         max_target_length=data_args.max_target_length
     )
 
-    train_dataset = train_dataset.filter(TASK_TO_FILTER_FN[data_args.task])
-    if data_args.task == 'multi' and data_args.valid_for_qg_only:
-        logger.info("processing valid data only for qg task")
-        valid_dataset = valid_dataset.filter(filter_qg)
-    else:
-        valid_dataset = valid_dataset.filter(TASK_TO_FILTER_FN[data_args.task])
-
-    
     train_dataset = processor.process(train_dataset)
     valid_dataset = processor.process(valid_dataset)
-
+    # train_dataset.to_json("squad2.json")
     columns = ["source_ids", "target_ids", "attention_mask"]
     train_dataset.set_format(type='torch', columns=columns)
     valid_dataset.set_format(type='torch', columns=columns)
+    # raise Exception(type(train_dataset))
+    # pprint(train_dataset.features)
 
     if data_args.train_file_name is None:
         train_file_name = f"train_data_{data_args.task}_{data_args.qg_format}_{data_args.model_type}.pt"
