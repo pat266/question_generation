@@ -247,7 +247,8 @@ def main():
             valid_dataset = valid_dataset.filter(TASK_TO_FILTER_FN[data_args.task])
     else:
         # Train
-        data_files_train = {"train": data_args.dataset_path + data_args.train_file}      
+        data_files_train = {"train": os.path.relpath(data_args.dataset_path + data_args.train_file)}
+        # raise Exception(data_files_train)
         train_dataset = load_dataset('json', data_files=data_files_train, name=data_args.qg_format, field='data')
         train_dataset = train_dataset['train']
         try:
@@ -258,7 +259,7 @@ def main():
         train_dataset = train_dataset.map(process_squad, batched=True, remove_columns="paragraphs")
         
         # Validation
-        data_files_valid = {"valid": data_args.dataset_path + data_args.valid_file}
+        data_files_valid = {"valid": os.path.relpath(data_args.dataset_path + data_args.valid_file)}
         valid_dataset = load_dataset('json', data_files=data_files_valid, name=data_args.qg_format, field='data')
         valid_dataset = valid_dataset['valid']
         try:
