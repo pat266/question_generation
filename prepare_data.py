@@ -179,14 +179,16 @@ def _get_correct_alignement(context, answer):
     gold_text = answer['text']
     start_idx = answer['answer_start']
     end_idx = start_idx + len(gold_text)
-    if context[start_idx:end_idx] == gold_text:
-        return start_idx, end_idx       # When the gold label position is good
-    elif context[start_idx-1:end_idx-1] == gold_text:
+    if context[start_idx-1:end_idx-1] == gold_text:
         return start_idx-1, end_idx-1   # When the gold label is off by one character
     elif context[start_idx-2:end_idx-2] == gold_text:
         return start_idx-2, end_idx-2   # When the gold label is off by two character
+    elif context[start_idx+1:end_idx+1] == gold_text:
+        return start_idx+1, end_idx+1   # When the gold label is off by one character
+    elif context[start_idx+2:end_idx+2] == gold_text:
+        return start_idx+2, end_idx+2   # When the gold label is off by two character
     else:
-        raise ValueError()
+        return start_idx, end_idx # When the gold label position is good or can't be found
 """
 All three of the following function has the same semantic as the squad_multitask.py file
 There will be no tags as we will always use multi - generate both questions and answers
