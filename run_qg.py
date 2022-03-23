@@ -125,12 +125,13 @@ def main(args_file=None):
         level=logging.INFO if training_args.local_rank in [-1, 0] else logging.WARN,
     )
     logger.warning(
-        "Process rank: %s, device: %s, n_gpu: %s, distributed training: %s, 16-bits training: %s",
+        "Process rank: %s, device: %s, n_gpu: %s, distributed training: %s, 16-bits training: %s, n-tpu: %s",
         training_args.local_rank,
         training_args.device,
         training_args.n_gpu,
         bool(training_args.local_rank != -1),
         training_args.fp16,
+        training_args.tpu_num_cores,
     )
     logger.info("Training/evaluation parameters %s", training_args)
 
